@@ -75,6 +75,8 @@ export type FileSummary = {
   /** Types of personal data found (never the data itself). */
   reasons: string[];
   version: string;
+  /** Dated items the device found (deadlines, bills, trips); stays local. */
+  dates?: { what: string; date: string }[];
 };
 export type PlanCollection = {
   /** "c:<categoryId>" for existing collections, "new:<n>" for proposed ones. */
@@ -171,6 +173,8 @@ export type Library = {
   preferences?: Preference[];
   /** Explicit one-time yes to cloud sorting of device summaries. */
   cloudSorting?: boolean;
+  /** "Coming up" items the person dismissed (document|date|what). */
+  dismissedDates?: string[];
 };
 export type Body = {
   id: string;

@@ -230,6 +230,7 @@ export async function writeLibrary(
             pendingQuestions: saved.pendingQuestions ?? [],
             preferences: saved.preferences ?? [],
             cloudSorting: saved.cloudSorting ?? false,
+            dismissedDates: saved.dismissedDates ?? [],
           },
           "current",
         );

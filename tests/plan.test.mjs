@@ -580,3 +580,62 @@ test("an answer can create a proposed collection that no file was filed into yet
   assert.equal(answered.library.documents[0].categoryId, research.id);
   assert.equal(answered.library.preferences[0].collectionId, research.id);
 });
+
+test("dated items: only real dates in a sensible window, at most three", async () => {
+  const { validDates } = await import("../src/plan.ts");
+  const today = new Date(2026, 10, 16); // 16 Nov 2026
+  assert.deepEqual(
+    validDates(
+      [
+        { what: "Electricity bill due", date: "2026-11-20" },
+        { what: "Impossible", date: "2026-02-31" },
+        { what: "Wrong format", date: "20 Nov 2026" },
+        { what: "", date: "2026-12-01" },
+        { what: "Too far back", date: "2020-01-01" },
+        { what: "Too far ahead", date: "2035-01-01" },
+        { what: "Winter flight", date: "2026-12-20" },
+        { what: "Exam", date: "2027-01-10" },
+        { what: "Fourth", date: "2027-02-01" },
+      ],
+      today,
+    ),
+    [
+      { what: "Electricity bill due", date: "2026-11-20" },
+      { what: "Winter flight", date: "2026-12-20" },
+      { what: "Exam", date: "2027-01-10" },
+    ],
+  );
+  assert.deepEqual(validDates("nope", today), []);
+});
+
+test("coming up: upcoming only, soonest first, dismissed items hidden", async () => {
+  const { comingUp } = await import("../src/plan.ts");
+  const today = new Date(2026, 10, 16);
+  const lib = library(
+    [
+      doc("a", {
+        summary: summary("h-a", "An invoice.", {
+          dates: [
+            { what: "Bill due", date: "2026-11-20" },
+            { what: "Old", date: "2026-11-01" },
+          ],
+        }),
+      }),
+      doc("b", {
+        summary: summary("h-b", "A trip.", {
+          dates: [{ what: "Flight", date: "2026-12-20" }],
+        }),
+      }),
+      doc("c", {
+        summary: summary("h-c", "Brief.", {
+          dates: [{ what: "Due today", date: "2026-11-16" }],
+        }),
+      }),
+    ],
+    { dismissedDates: ["b|2026-12-20|Flight"] },
+  );
+  assert.deepEqual(
+    comingUp(lib, today).map((i) => i.what),
+    ["Due today", "Bill due"],
+  );
+});

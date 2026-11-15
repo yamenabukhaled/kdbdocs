@@ -83,6 +83,15 @@
   </div>
 </dialog>
 <div class="home-tools">
+  <section
+    id="coming-up"
+    class="coming-up"
+    aria-labelledby="coming-up-title"
+    hidden
+  >
+    <h2 id="coming-up-title">Coming up</h2>
+    <ul id="coming-up-list"></ul>
+  </section>
   <section class="collection-shelf" aria-label="Collections">
     <div class="nav-heading">
       <h2>Collections</h2>
@@ -296,6 +305,13 @@
         accept=".json,application/json" /></label
     ><button id="clear-imports" class="secondary">Clear imported files</button>
   </div>
+  <button id="reread-files" class="secondary">
+    Re-read files on this device
+  </button>
+  <p class="note">
+    Reads every file again on this device to refresh summaries, topics and
+    dates. Collections don't change. Nothing is sent.
+  </p>
   <p id="storage-info" class="note"></p>
 </dialog>
 <dialog id="restore-dialog" aria-label="Review restore">

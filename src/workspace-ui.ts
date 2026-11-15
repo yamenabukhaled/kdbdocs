@@ -44,6 +44,7 @@ import { restorePlan } from "./backup";
 import { exportArchive, importArchive, type Archive } from "./archive";
 import { reviewEvent } from "./analysis";
 import { askExcerpt, askPrompt, validateAnswer } from "./ask";
+import { comingUp } from "./plan";
 import { initializeLocal, inferLocal } from "./firebase";
 import { ContentSearch, validateSearchTerms, type SearchHit } from "./search";
 import { createOrganizer } from "./organize-ui";
@@ -803,7 +804,69 @@ export function mountWorkspace(root: HTMLElement) {
             : b.importedAt.localeCompare(a.importedAt),
       );
   }
+  // Home: upcoming dated items the device found (deadlines, bills, trips).
+  function renderComingUp() {
+    const section = el("coming-up");
+    const items =
+      homeView && !collectionsPage && !topicFilter ? comingUp(library) : [];
+    section.hidden = !items.length;
+    const list = el("coming-up-list");
+    list.replaceChildren();
+    const today = new Date();
+    const dayKey = (d: Date) => d.toDateString();
+    const tomorrow = new Date(today);
+    tomorrow.setDate(today.getDate() + 1);
+    for (const item of items) {
+      const [y, m, d] = item.date.split("-").map(Number);
+      const when = new Date(y, m - 1, d);
+      const label =
+        dayKey(when) === dayKey(today)
+          ? "Today"
+          : dayKey(when) === dayKey(tomorrow)
+            ? "Tomorrow"
+            : when.toLocaleDateString(undefined, {
+                weekday: "short",
+                day: "numeric",
+                month: "short",
+                ...(y !== today.getFullYear() ? { year: "numeric" } : {}),
+              });
+      const li = element("li");
+      const date = element("span", label);
+      date.className = "coming-up-date";
+      const open = button(
+        item.what,
+        () => {
+          homeView = false;
+          void selectDocument(item.documentId);
+          renderDocuments();
+        },
+        "coming-up-what",
+      );
+      open.title = `Open ${item.name}`;
+      const file = element("span", item.name);
+      file.className = "coming-up-file";
+      const dismiss = button(
+        "×",
+        () =>
+          void mutate(
+            (current) => ({
+              ...current,
+              dismissedDates: [
+                ...(current.dismissedDates ?? []),
+                item.key,
+              ].slice(-500),
+            }),
+            "Removed from Coming up.",
+          ),
+        "quiet-button coming-up-dismiss",
+      );
+      dismiss.setAttribute("aria-label", `Dismiss ${item.what}`);
+      li.append(date, open, file, dismiss);
+      list.append(li);
+    }
+  }
   function renderDocuments() {
+    renderComingUp();
     document.body.classList.toggle("collections-page", collectionsPage);
     el("collections-filter").classList.toggle("active", collectionsPage);
     const list = el("document-list");
@@ -1409,6 +1472,10 @@ export function mountWorkspace(root: HTMLElement) {
       el("storage-info").textContent = "";
     }
   }
+  el("reread-files").onclick = () => {
+    modal("settings-dialog").close();
+    void organizer.reread();
+  };
   el("export-backup").onclick = async () => {
     try {
       const text = await exportArchive(library);

@@ -464,17 +464,19 @@ export function createOrganizer(ctx: OrganizerContext) {
         ctx.library(),
         documents.map((d) => d.id),
       ).length;
-      lastResult =
-        `Sorted ${plural(filed, "file")}` +
-        (created.size
-          ? ` and made ${plural(created.size, "new collection")} (${[...created].join(", ")})`
-          : "") +
-        "." +
-        (left ? ` ${plural(left, "file")} left unfiled.` : "") +
-        (failed
-          ? ` ${plural(failed, "file")} could not be read on this device.`
-          : "") +
-        (ctx.stopped() ? " Stopped early." : "");
+      const noCollections = !filed && !ctx.library().categories.length;
+      lastResult = noCollections
+        ? `Read ${plural(documents.length - failed, "file")} on this device. Nothing was sorted yet: create a collection, or turn on cloud sorting in Settings.`
+        : `Sorted ${plural(filed, "file")}` +
+          (created.size
+            ? ` and made ${plural(created.size, "new collection")} (${[...created].join(", ")})`
+            : "") +
+          "." +
+          (left ? ` ${plural(left, "file")} left unfiled.` : "") +
+          (failed
+            ? ` ${plural(failed, "file")} could not be read on this device.`
+            : "") +
+          (ctx.stopped() ? " Stopped early." : "");
     } catch (error) {
       if (!signal.aborted)
         say(
@@ -485,6 +487,50 @@ export function createOrganizer(ctx: OrganizerContext) {
       progress = "";
       resolveConsent?.(false);
       resolveConsent = null;
+      ctx.end();
+      render();
+    }
+  }
+
+  /** Re-read every file on the device (summaries, topics, dates). No sorting. */
+  async function reread() {
+    const controller = ctx.begin();
+    if (!controller) return;
+    const signal = controller.signal;
+    let failed = 0;
+    let done = 0;
+    try {
+      const documents = ctx
+        .library()
+        .documents.filter(
+          (d) => d.characters > 0 && ["ready", "partial"].includes(d.status),
+        );
+      if (!documents.length) return;
+      progress = "Preparing the on-device model…";
+      render();
+      await initializeLocal(() => undefined, signal, "summary");
+      for (const [i, document] of documents.entries()) {
+        if (ctx.stopped() || signal.aborted) break;
+        const current = ctx
+          .library()
+          .documents.find((d) => d.id === document.id);
+        if (!current) continue;
+        progress = `Re-reading on this device ${i + 1} of ${documents.length}: ${document.name}`;
+        render();
+        if (await summarize(current, signal)) done++;
+        else failed++;
+      }
+      say(
+        `Re-read ${plural(done, "file")} on this device.${failed ? ` ${plural(failed, "file")} couldn't be read.` : ""}`,
+      );
+    } catch (error) {
+      if (!signal.aborted)
+        say(
+          `Re-reading stopped: ${error instanceof Error ? error.message : "the on-device model is unavailable"}. Nothing was sent.`,
+          true,
+        );
+    } finally {
+      progress = "";
       ctx.end();
       render();
     }
@@ -662,5 +708,5 @@ export function createOrganizer(ctx: OrganizerContext) {
   }
   el("organize-button").onclick = () => void organize();
 
-  return { organize, protect, render };
+  return { organize, protect, render, reread };
 }
