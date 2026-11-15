@@ -43,6 +43,7 @@ import {
 import { restorePlan } from "./backup";
 import { exportArchive, importArchive, type Archive } from "./archive";
 import { reviewEvent } from "./analysis";
+import { askExcerpt, askPrompt, validateAnswer } from "./ask";
 import { initializeLocal, inferLocal } from "./firebase";
 import { ContentSearch, validateSearchTerms, type SearchHit } from "./search";
 import { createOrganizer } from "./organize-ui";
@@ -115,6 +116,125 @@ export function mountWorkspace(root: HTMLElement) {
   }
   // Files the person just moved themselves get a brief highlight on their card.
   const justMoved = new Set<string>();
+  // "Ask about this file" state for the open file (on-device only).
+  let ask: {
+    docId: string;
+    question: string;
+    answer?: string;
+    found?: boolean;
+    partial?: boolean;
+    error?: string;
+    controller?: AbortController;
+  } | null = null;
+  // Typed-but-not-sent question survives re-renders of the file view.
+  let askDraft = { docId: "", text: "" };
+  let askHadFocus = false;
+  function askBox(document: DocumentMeta) {
+    const box = element("section");
+    box.className = "ask-box";
+    box.append(element("h3", "Ask about this file"));
+    const current = ask?.docId === document.id ? ask : null;
+    const form = element("form");
+    const input = element("input");
+    input.type = "text";
+    input.maxLength = 300;
+    input.placeholder = "e.g. When is this due?";
+    input.setAttribute("aria-label", `Question about ${document.name}`);
+    input.value =
+      current?.question ??
+      (askDraft.docId === document.id ? askDraft.text : "");
+    input.oninput = () => {
+      askDraft = { docId: document.id, text: input.value };
+    };
+    const send = element("button", "Ask");
+    send.type = "submit";
+    send.disabled = !!current?.controller || !document.characters;
+    form.append(input, send);
+    if (current?.controller) {
+      const stop = button(
+        "Stop",
+        () => {
+          current.controller?.abort();
+        },
+        "quiet-button",
+      );
+      form.append(stop);
+    }
+    form.onsubmit = (event) => {
+      event.preventDefault();
+      void askFile(document, input.value.trim());
+    };
+    box.append(form);
+    const status = element("div");
+    status.className = "ask-answer";
+    status.setAttribute("aria-live", "polite");
+    if (current?.controller)
+      status.append(element("p", "Reading the file on this device…"));
+    else if (current?.error) {
+      const error = element("p", current.error);
+      error.className = "inline-error";
+      status.append(error);
+    } else if (current?.answer) {
+      status.append(element("p", current.answer));
+      const note = element(
+        "p",
+        `Answered on this device; nothing was sent.${current.partial ? " This file is long, so only the most relevant parts were read." : ""}${current.found === false ? " The answer isn't in the file." : ""}`,
+      );
+      note.className = "note";
+      status.append(note);
+    }
+    box.append(status);
+    if (askHadFocus) queueMicrotask(() => input.focus({ preventScroll: true }));
+    return box;
+  }
+  async function askFile(document: DocumentMeta, question: string) {
+    if (!question) return;
+    if (running) {
+      say("Wait until sorting finishes, then ask again.", true);
+      return;
+    }
+    const body =
+      (selected === document.id ? selectedBody : undefined) ??
+      (await readBody(document.id));
+    if (!body?.text.trim()) {
+      say("This file has no readable text to ask about.", true);
+      return;
+    }
+    ask?.controller?.abort();
+    const controller = new AbortController();
+    ask = { docId: document.id, question, controller };
+    renderDetail();
+    const timer = setTimeout(() => controller.abort(), 90_000);
+    try {
+      const { excerpt, partial } = askExcerpt(body.text, question);
+      await initializeLocal(() => undefined, controller.signal, "ask");
+      const response = await inferLocal(
+        askPrompt(document.name, question, excerpt, partial),
+        controller.signal,
+        "ask",
+      );
+      const result = validateAnswer(response.text, response.source);
+      if (ask?.controller === controller)
+        ask = { docId: document.id, question, ...result, partial };
+    } catch (error) {
+      if (ask?.controller === controller)
+        ask = {
+          docId: document.id,
+          question,
+          error: controller.signal.aborted
+            ? "Stopped. Nothing was sent."
+            : `Couldn't answer on this device: ${error instanceof Error ? error.message : "unknown error"}. Nothing was sent to the cloud.`,
+        };
+    } finally {
+      clearTimeout(timer);
+      if (selected === document.id) {
+        renderDetail();
+        el("document-detail")
+          .querySelector<HTMLInputElement>(".ask-box input")
+          ?.focus({ preventScroll: true });
+      }
+    }
+  }
   // Topic chosen from a chip; filters the document list.
   let topicFilter: string | null = null;
   const sameTopic = (a: string, b: string) =>
@@ -892,6 +1012,7 @@ export function mountWorkspace(root: HTMLElement) {
       ?.classList.toggle("with-detail", !!selected);
   }
   function renderDetail() {
+    askHadFocus = !!window.document.activeElement?.closest(".ask-box");
     const panel = el("document-detail");
     panel.replaceChildren();
     const document = library.documents.find(
@@ -1031,7 +1152,15 @@ export function mountWorkspace(root: HTMLElement) {
         ),
       "danger-button",
     );
-    panel.append(top, result, assignment, privacy, coverage, remove);
+    panel.append(
+      top,
+      result,
+      askBox(document),
+      assignment,
+      privacy,
+      coverage,
+      remove,
+    );
   }
   async function decide(
     action: "confirm" | "change" | "skip",

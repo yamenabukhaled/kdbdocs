@@ -2729,3 +2729,25 @@ button.topic-chip[hidden] {
 .library-results #topic-filter-chip {
   margin-right: auto;
 }
+
+/* ===== Feature: ask about this file ===== */
+.ask-box {
+  margin: 12px 0;
+}
+.ask-box h3 {
+  margin: 0 0 6px;
+  font-size: 14px;
+}
+.ask-box form {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.ask-box input {
+  flex: 1;
+  min-width: 0;
+}
+.ask-answer p {
+  margin: 8px 0 0;
+  line-height: 1.5;
+}

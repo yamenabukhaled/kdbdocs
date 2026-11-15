@@ -40,7 +40,13 @@ function firebaseApp() {
 function cloudFirebaseApp() {
   return (cloudApp ??= initializeApp(config, "document-assistant-cloud"));
 }
-type LocalTask = "summary" | "place" | "search" | "collection";
+type LocalTask = "summary" | "place" | "search" | "collection" | "ask";
+const askSchema = Schema.object({
+  properties: {
+    answer: Schema.string({ maxLength: 800 }),
+    found: Schema.boolean(),
+  },
+});
 const summarySchema = Schema.object({
   properties: {
     summary: Schema.string({ maxLength: 240 }),
@@ -193,9 +199,11 @@ function deviceModel(
               ? nativeSchema(summarySchema)
               : task === "place"
                 ? constrainReview(placeSchema, allowedIds ?? [])
-                : task === "collection"
-                  ? nativeSchema(collectionSchema)
-                  : nativeSchema(searchSchema),
+                : task === "ask"
+                  ? nativeSchema(askSchema)
+                  : task === "collection"
+                    ? nativeSchema(collectionSchema)
+                    : nativeSchema(searchSchema),
         },
         createOptions: {
           signal: modelSignal,
