@@ -75,6 +75,8 @@ export type FileSummary = {
   /** Types of personal data found (never the data itself). */
   reasons: string[];
   version: string;
+  /** Short display title written on the device; the original file is never renamed. */
+  title?: string;
   /** Dated items the device found (deadlines, bills, trips); stays local. */
   dates?: { what: string; date: string }[];
 };
@@ -173,6 +175,8 @@ export type Library = {
   preferences?: Preference[];
   /** Explicit one-time yes to cloud sorting of device summaries. */
   cloudSorting?: boolean;
+  /** Show original file names instead of device-written titles. */
+  showFileNames?: boolean;
   /** "Coming up" items the person dismissed (document|date|what). */
   dismissedDates?: string[];
 };

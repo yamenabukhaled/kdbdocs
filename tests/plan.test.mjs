@@ -639,3 +639,30 @@ test("coming up: upcoming only, soonest first, dismissed items hidden", async ()
     ["Due today", "Bill due"],
   );
 });
+
+test("titles: cleaned, capped, dropped if they look personal; shown unless file names preferred", async () => {
+  const { validTitle, displayName, validateSummary } =
+    await import("../src/plan.ts");
+  assert.equal(
+    validTitle("  Weekend   sourdough recipe "),
+    "Weekend sourdough recipe",
+  );
+  assert.equal(validTitle("CV of jane@example.com"), "");
+  assert.equal(validTitle(42), "");
+  assert.ok(validTitle("x".repeat(100)).length <= 61);
+  const withTitle = validateSummary(
+    JSON.stringify({
+      summary: "A recipe.",
+      sensitive: false,
+      title: "Weekend sourdough recipe",
+    }),
+    "on_device",
+    "h",
+    [],
+  );
+  assert.equal(withTitle.title, "Weekend sourdough recipe");
+  const d = { name: "notes.txt", summary: withTitle };
+  assert.equal(displayName(d), "Weekend sourdough recipe");
+  assert.equal(displayName(d, true), "notes.txt");
+  assert.equal(displayName({ name: "a.txt" }), "a.txt");
+});

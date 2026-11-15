@@ -231,6 +231,7 @@ export async function writeLibrary(
             preferences: saved.preferences ?? [],
             cloudSorting: saved.cloudSorting ?? false,
             dismissedDates: saved.dismissedDates ?? [],
+            showFileNames: saved.showFileNames ?? false,
           },
           "current",
         );

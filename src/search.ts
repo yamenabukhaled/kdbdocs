@@ -56,7 +56,7 @@ export class ContentSearch {
   ): SearchHit | null {
     const entry = this.entries.get(document.id);
     const name = normalize(
-      `${document.name}${document.relativePath ? ` ${document.relativePath}` : ""}`,
+      `${document.name}${document.summary?.title ? ` ${document.summary.title}` : ""}${document.relativePath ? ` ${document.relativePath}` : ""}`,
     );
     const body = entry?.normalized ?? "";
     const phrase = normalize(query).trim().replace(/^"|"$/g, "");

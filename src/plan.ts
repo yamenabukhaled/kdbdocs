@@ -15,7 +15,7 @@ import {
 } from "./workspace.ts";
 
 // Bump when the summary prompt changes so existing summaries are regenerated.
-export const PLAN_VERSION = "plan-v3";
+export const PLAN_VERSION = "plan-v4";
 const MAX_NEW_COLLECTIONS = 8;
 const MAX_QUESTIONS = 5;
 const MAX_LIBRARY_COLLECTIONS = 20;
@@ -86,6 +86,7 @@ export function summaryPrompt(
 - summary: one or two plain sentences (at most 240 characters) saying what kind of document it is and what it is for, for example an assignment brief, lecture notes, a research paper, a CV, an invoice, meeting notes, a recipe, source code for a project. Mention clues about why the person has it (for a class, for a job, out of personal interest) when the document states them.
   Never include proper names: no names of people, companies, employers, schools, clubs, products, places or projects, and no contact details, account or ID numbers, amounts of money or exact dates. Describe them generically instead: "an electricity provider", "a university course", "a hobby project". Course codes and the titles of published papers or books are allowed.
 - topics: up to 5 short subject words, following the same rule (no proper names).
+- title: a short, clear title for the file (at most 60 characters) saying what it is, better than a vague file name like "notes.txt" or "scan_0042.pdf". For example "Assignment 2 brief: regression (STAT2010)" or "Weekend sourdough recipe". No personal names, contact details or ID numbers.
 - sensitive: true if the document contains personal, financial, medical, legal, credential or confidential information about a real person or organisation; otherwise false.
 - sensitiveReason: a few words explaining why it is sensitive, or an empty string.
 - dates: up to 3 dated items the document states that a person might need to act on or remember (a deadline, due date, bill, appointment, exam, trip, event). Each has what (a few words, no personal names, for example "Assignment 2 due" or "Electricity bill due") and date as YYYY-MM-DD. Only use dates written in the document; if the year is missing, use the next such date after TODAY. Leave the list empty if there are none. Skip dates that are only history (publication dates, dates of past work).
@@ -148,7 +149,24 @@ export function validateSummary(
     reasons,
     version: PLAN_VERSION,
     dates: validDates(data.dates, today),
+    ...(validTitle(data.title) ? { title: validTitle(data.title) } : {}),
   };
+}
+
+/** A display title from the device; dropped if it carries personal-data patterns. */
+export function validTitle(value: unknown): string {
+  if (typeof value !== "string") return "";
+  const title = value.trim().replace(/\s+/g, " ");
+  if (!title || screenText(title).length) return "";
+  return clip(title, 60);
+}
+
+/** The name shown in the app: the device's title unless the person prefers file names. */
+export function displayName(
+  document: Pick<DocumentMeta, "name" | "summary">,
+  showFileNames = false,
+): string {
+  return (!showFileNames && document.summary?.title) || document.name;
 }
 
 /** Keep well-formed, real dates within a sensible window (1 year back, 3 ahead). */

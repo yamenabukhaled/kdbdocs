@@ -66,6 +66,7 @@ const summarySchema = Schema.object({
     topics: Schema.array({ maxItems: 5, items: Schema.string() }),
     sensitive: Schema.boolean(),
     sensitiveReason: Schema.string({ maxLength: 120 }),
+    title: Schema.string({ maxLength: 60 }),
     dates: Schema.array({
       maxItems: 3,
       items: Schema.object({

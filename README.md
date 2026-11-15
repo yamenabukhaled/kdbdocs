@@ -56,6 +56,12 @@ Firebase's automatic hybrid modes (`PREFER_ON_DEVICE` / `PREFER_IN_CLOUD`) can f
 - **Import:** files or whole folders. PDF, Word (.docx), PowerPoint (.pptx), Markdown, plain text and data, and source code (R, Python, JS/TS, Java, C/C++, Go, Rust…). Text is extracted locally with ordinary parsers; code is never executed.
 - **Batches:** sorting runs in groups of 8, so collections fill in while the import is still running. If the cloud model is busy, it retries once, then sorts that group on the device.
 - **Browsing:** a Home view with recent collections, an All Collections grid, collection views, and search across the extracted text of every file (not just file names).
+- **On-device extras (Gemini Nano; nothing is sent):**
+  - **Summaries and topics:** every file shows what the device read, with topic chips you can click to filter.
+  - **Ask about this file:** ask a question ("What's the late penalty?") and it's answered from the file's own text.
+  - **Coming up:** deadlines, bills and trips found in your files, listed on Home.
+  - **Find it for me:** describe a file you half-remember and the device picks the best matches.
+  - **Clearer titles:** vague names like `notes.txt` get a descriptive title. Originals are never renamed.
 - **Manual control:** a collection picker on every card, an editable collection list, and on-device collection descriptions.
 - **Storage:** everything lives in the browser (IndexedDB). Originals are never moved, renamed or uploaded. Backup and restore to a local file.
 

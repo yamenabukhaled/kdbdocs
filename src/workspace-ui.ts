@@ -44,7 +44,7 @@ import { restorePlan } from "./backup";
 import { exportArchive, importArchive, type Archive } from "./archive";
 import { reviewEvent } from "./analysis";
 import { askExcerpt, askPrompt, validateAnswer } from "./ask";
-import { comingUp } from "./plan";
+import { comingUp, displayName } from "./plan";
 import { findCandidates, findPrompt, validateFind } from "./find";
 import { initializeLocal, inferLocal } from "./firebase";
 import { ContentSearch, type SearchHit } from "./search";
@@ -236,6 +236,13 @@ export function mountWorkspace(root: HTMLElement) {
           ?.focus({ preventScroll: true });
       }
     }
+  }
+  const shownName = (document: DocumentMeta) =>
+    displayName(document, library.showFileNames);
+  function fileNameLine(text: string) {
+    const line = element("small", text);
+    line.className = "original-name";
+    return line;
   }
   // Topic chosen from a chip; filters the document list.
   let topicFilter: string | null = null;
@@ -843,8 +850,10 @@ export function mountWorkspace(root: HTMLElement) {
         },
         "coming-up-what",
       );
-      open.title = `Open ${item.name}`;
-      const file = element("span", item.name);
+      const itemDoc = library.documents.find((d) => d.id === item.documentId);
+      const itemName = itemDoc ? shownName(itemDoc) : item.name;
+      open.title = `Open ${itemName}`;
+      const file = element("span", itemName);
       file.className = "coming-up-file";
       const dismiss = button(
         "×",
@@ -953,7 +962,10 @@ export function mountWorkspace(root: HTMLElement) {
       row.className = "document-open-button";
       row.setAttribute(
         "aria-label",
-        `Open ${document.relativePath ?? document.name}`,
+        // Spoken name starts with the visible title (WCAG label-in-name).
+        shownName(document) !== document.name
+          ? `Open ${shownName(document)} (${document.relativePath ?? document.name})`
+          : `Open ${document.relativePath ?? document.name}`,
       );
       row.setAttribute("aria-pressed", String(selected === document.id));
       const category = library.categories.find(
@@ -1006,7 +1018,10 @@ export function mountWorkspace(root: HTMLElement) {
         fileType,
         privacyTag,
         preview,
-        element("strong", document.name),
+        element("strong", shownName(document)),
+        ...(shownName(document) !== document.name
+          ? [fileNameLine(document.name)]
+          : []),
         status,
       );
       const descriptions: string[] = [];
@@ -1095,9 +1110,11 @@ export function mountWorkspace(root: HTMLElement) {
     const top = element("div");
     top.className = "detail-heading";
     top.append(
-      element("h2", document.name),
+      element("h2", shownName(document)),
       button("Close", () => void selectDocument(null), "quiet-button"),
     );
+    if (shownName(document) !== document.name)
+      top.append(fileNameLine(`File: ${document.name}`));
     if (document.relativePath) {
       const path = element("p", `Folder: ${document.relativePath}`);
       path.className = "document-path";
@@ -1301,6 +1318,7 @@ export function mountWorkspace(root: HTMLElement) {
     renderDocuments();
     renderDetail();
     el<HTMLInputElement>("global-private").checked = library.globalLocalOnly;
+    el<HTMLInputElement>("show-file-names").checked = !!library.showFileNames;
     el<HTMLInputElement>("cloud-sorting").checked =
       !!library.cloudSorting && !library.globalLocalOnly;
     organizer.render();
@@ -1435,6 +1453,13 @@ export function mountWorkspace(root: HTMLElement) {
       }),
       "Workspace policy saved. No cloud request authorized.",
     );
+  el<HTMLInputElement>("show-file-names").onchange = (event) => {
+    const on = (event.target as HTMLInputElement).checked;
+    void mutate(
+      (current) => ({ ...current, showFileNames: on }),
+      on ? "Showing original file names." : "Showing titles.",
+    );
+  };
   el<HTMLInputElement>("cloud-sorting").onchange = (event) => {
     const on = (event.target as HTMLInputElement).checked;
     void mutate(
@@ -2161,7 +2186,7 @@ export function mountWorkspace(root: HTMLElement) {
       const li = element("li");
       li.append(
         button(
-          document.name,
+          shownName(document),
           () => void selectDocument(document.id),
           "find-open",
         ),

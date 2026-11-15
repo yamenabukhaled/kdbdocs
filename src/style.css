@@ -2863,3 +2863,18 @@ button.find-open {
   text-decoration: underline;
   text-underline-offset: 2px;
 }
+
+/* ===== Feature: display titles ===== */
+.original-name {
+  flex-basis: 100%;
+  margin-top: -4px;
+  color: var(--muted);
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.detail-heading .original-name {
+  display: block;
+  margin: 2px 0 0;
+}
