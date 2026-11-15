@@ -11,7 +11,7 @@ document.querySelector<HTMLDivElement>("#app")!.innerHTML = `
   <header><a href="#" aria-label="KDBDocs home"><span class="brand-mark" aria-hidden="true">K</span>KDBDocs</a></header>
   <main>
   <section id="library"></section>
-  <details class="diagnostics"><summary>Connection diagnostics</summary><div class="grid"><section class="panel"><h2>Firebase diagnostic</h2><p>Real connectivity checks, using a fixed, non-sensitive prompt.</p>
+  <details class="diagnostics" id="diagnostics"><summary>Connection diagnostics</summary><div class="grid"><section class="panel"><h2>Firebase diagnostic</h2><p>Real connectivity checks, using a fixed, non-sensitive prompt.</p>
   <dl><dt>Project</dt><dd id="firebase-project"></dd><dt>Browser</dt><dd id="browser"></dd><dt>Secure context</dt><dd id="secure"></dd><dt>Local model</dt><dd id="availability">Not checked</dd></dl>
   <div class="actions"><button id="inspect">Check device</button><button id="local">Run local-only test</button></div>
   <p class="note">The local test may download a browser model. Generic Firebase/service traffic can still occur. Document content never falls back to cloud.</p>
@@ -21,6 +21,10 @@ document.querySelector<HTMLDivElement>("#app")!.innerHTML = `
 const el = <T extends HTMLElement = HTMLElement>(id: string) =>
   document.getElementById(id) as T;
 mountWorkspace(el("library"));
+// Developer tool (App Check debug token, raw model checks): open with ?diagnostics.
+el("diagnostics").hidden = !new URLSearchParams(location.search).has(
+  "diagnostics",
+);
 const show = (text: string) => {
   el("result").textContent = text;
 };

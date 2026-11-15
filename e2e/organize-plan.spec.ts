@@ -205,7 +205,7 @@ test("import → device summaries → one-time consent → filed immediately →
   await expect(card("later.md")).toHaveText("Coursework");
 
   // Undo reverses that whole sort run.
-  await panel.getByRole("button", { name: "Undo" }).click();
+  await page.locator("#undo-workspace").click();
   await expect(card("later.md")).not.toHaveText("Coursework");
   await expect(card("notes.txt")).toHaveText("Coursework");
 });

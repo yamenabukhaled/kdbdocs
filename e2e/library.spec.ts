@@ -251,10 +251,6 @@ test("backup download, preview and restore round trip into an empty browser", as
   await expect(fresh.locator("#document-detail pre")).toContainText(
     "assigned reading",
   );
-  await fresh.locator("#open-memory").click();
-  await expect(fresh.locator("#memory-list")).toContainText(
-    "1 active approved examples",
-  );
   await context.close();
 });
 

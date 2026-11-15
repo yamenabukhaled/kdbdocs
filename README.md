@@ -80,7 +80,7 @@ On Windows PowerShell, use `npm.cmd` instead of `npm`.
 `.env.local`:
 
 - the `VITE_FIREBASE_*` values come from Firebase console → Project settings → Your apps;
-- for local development, set `VITE_APPCHECK_DEBUG=true`. Open **Connection diagnostics → Check App Check**, then register the debug token it prints in the Firebase console;
+- for local development, set `VITE_APPCHECK_DEBUG=true`. Open http://127.0.0.1:5174/?diagnostics, expand **Connection diagnostics → Check App Check**, then register the debug token it prints in the Firebase console;
 - for a hosted build, set `VITE_APPCHECK_SITE_KEY` to your reCAPTCHA Enterprise key instead.
 
 **Try it:** upload the folder `pilot/demo-corpus/`. It holds 23 made-up files (coursework, independent reading, an internship, a hobby script, personal files, and a CV with fake contact details that should stay on the device). The expected result is in `pilot/demo-corpus-EXPECTED.md`.

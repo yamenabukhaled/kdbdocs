@@ -47,6 +47,8 @@ export type OrganizerContext = {
   useCollection: (id: string) => void;
   /** Re-run the workspace's control-state pass (which calls protect()). */
   refresh: () => void;
+  /** Briefly highlight cards the person just moved. */
+  markMoved: (ids: string[]) => void;
 };
 
 const BATCH = 8;
@@ -492,6 +494,10 @@ export function createOrganizer(ctx: OrganizerContext) {
 
   async function answer(questionId: string, optionIndex: number | null) {
     let moved = 0;
+    const question = (ctx.library().pendingQuestions ?? []).find(
+      (q) => q.id === questionId,
+    );
+    if (question && optionIndex !== null) ctx.markMoved(question.documentIds);
     const saved = await ctx.mutate(
       (current) => {
         const result = answerQuestion(current, questionId, optionIndex);
@@ -541,24 +547,18 @@ export function createOrganizer(ctx: OrganizerContext) {
     }
     if (progress) {
       const row = node("div", undefined, "organize-progress");
-      row.append(node("span", progress));
+      row.append(node("span", undefined, "spinner"), node("span", progress));
       panel.append(row);
     } else if (lastResult) {
       const row = node("div", undefined, "organize-progress");
       row.append(node("span", lastResult));
-      const undo = node("button", "Undo", "quiet-button");
-      undo.type = "button";
-      undo.onclick = () => {
-        lastResult = "";
-        el<HTMLButtonElement>("undo-workspace").click();
-      };
       const dismiss = node("button", "Dismiss", "quiet-button");
       dismiss.type = "button";
       dismiss.onclick = () => {
         lastResult = "";
         render();
       };
-      row.append(undo, dismiss);
+      row.append(dismiss);
       panel.append(row);
     }
     const docs = new Map(library.documents.map((d) => [d.id, d]));
@@ -605,6 +605,47 @@ export function createOrganizer(ctx: OrganizerContext) {
       panel.append(card);
     }
     panel.hidden = !panel.childElementCount;
+    renderPreferences(library, names);
+  }
+
+  /** Settings → "What KDBDocs has learned": saved preferences, each removable. */
+  function renderPreferences(library: Library, names: Map<string, string>) {
+    const list = el("preference-list");
+    list.replaceChildren();
+    const preferences = library.preferences ?? [];
+    if (!preferences.length) {
+      list.append(
+        node(
+          "li",
+          "Nothing yet. Answer a sorting question to teach it.",
+          "note",
+        ),
+      );
+      return;
+    }
+    for (const preference of [...preferences].reverse()) {
+      const item = node("li");
+      const text = node("span", preference.text);
+      const target = preference.collectionId
+        ? names.get(preference.collectionId)
+        : undefined;
+      if (target) text.append(node("span", ` → ${target}`, "note"));
+      const remove = node("button", "Forget", "quiet-button");
+      remove.type = "button";
+      remove.setAttribute("aria-label", `Forget: ${preference.text}`);
+      remove.onclick = () =>
+        void ctx.mutate(
+          (current) => ({
+            ...current,
+            preferences: (current.preferences ?? []).filter(
+              (p) => p.id !== preference.id,
+            ),
+          }),
+          "Forgotten. It won't be used in later sorts.",
+        );
+      item.append(text, remove);
+      list.append(item);
+    }
   }
   const ready = () => true;
 

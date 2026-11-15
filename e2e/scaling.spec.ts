@@ -138,7 +138,7 @@ test("30/100/500 document libraries load metadata lazily and assignment writes n
       ),
     ).toBe(false);
     await page.locator("#open-settings").click();
-    const measurement = await page.locator("#performance-info").textContent();
+    const measurement = await page.locator("#storage-info").textContent();
     results.push({
       count,
       textCharactersPerDocument: 9400,

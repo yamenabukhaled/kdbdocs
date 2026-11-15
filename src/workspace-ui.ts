@@ -90,7 +90,6 @@ export function mountWorkspace(root: HTMLElement) {
   let selectedBody: Body | undefined;
   let selectionEpoch = 0;
   let editId: string | null = null;
-  let memoryPage = 0;
   let collectionsPage = false;
   const collectionDescriptions = new Map<
     string,
@@ -114,24 +113,22 @@ export function mountWorkspace(root: HTMLElement) {
       localStorage.setItem(recentKey, JSON.stringify(recentCollections));
     } catch {}
   }
+  // Files the person just moved themselves get a brief highlight on their card.
+  const justMoved = new Set<string>();
   let homeView = true;
   let navigationAnimation: Animation | undefined;
   let navigationEpoch = 0;
   let page = 0;
   let reviewOnly = false;
   let restore: Archive | null = null;
-  let editRuleId: string | null = null;
   let controller: AbortController | null = null;
   let tail: Promise<unknown> = Promise.resolve();
-  const timings: number[] = [];
   const searchIndex = new ContentSearch();
   let searchHits = new Map<string, SearchHit>();
   let searchEpoch = 0;
   let searchTimer: ReturnType<typeof setTimeout>;
   let expansion: string[] = [];
   let searchController: AbortController | null = null;
-  let proposalsOpen = false;
-  let storageLoadMs = 0;
   const organizer = createOrganizer({
     el,
     library: () => library,
@@ -160,14 +157,26 @@ export function mountWorkspace(root: HTMLElement) {
       renderCategories();
     },
     refresh: () => protectControls(),
+    markMoved: (ids) => ids.forEach((id) => justMoved.add(id)),
   });
+  // One quiet status line: routine messages fade after a few seconds; errors stay.
+  let sayTimer: ReturnType<typeof setTimeout> | undefined;
   function say(message: string, error = false) {
-    el("workspace-message").textContent = message;
-    el("workspace-message").classList.toggle("error", error);
+    const line = el("workspace-message");
+    line.textContent = message;
+    line.classList.toggle("error", error);
+    line.hidden = !message;
+    clearTimeout(sayTimer);
+    if (message && !error)
+      sayTimer = setTimeout(() => (line.hidden = true), 6000);
   }
   function renderImportReport() {
     const report = el("import-report");
-    report.hidden = !importStatus;
+    // Only show the import box while importing or when something went wrong.
+    const finishedCleanly =
+      importStatus?.phase === "complete" &&
+      !/error/i.test(importStatus.message);
+    report.hidden = !importStatus || (finishedCleanly && !importSessionActive);
     if (!importStatus) return;
     const unfinished = ["reading", "saving", "analyzing"].includes(
       importStatus.phase,
@@ -178,7 +187,7 @@ export function mountWorkspace(root: HTMLElement) {
     const interrupted = unfinished && !importSessionActive;
     const explanation = interrupted
       ? importStatus.phase === "analyzing"
-        ? "Files were saved, but local analysis did not record completion. Use Analyze unreviewed locally to continue."
+        ? "Files were saved, but sorting didn't finish. Use Sort unfiled to continue."
         : "This import did not finish before the page was closed or refreshed. Reselect the folder; already-saved paths start unchecked."
       : importStatus.message;
     el("import-report-text").textContent =
@@ -459,36 +468,30 @@ export function mountWorkspace(root: HTMLElement) {
       return (ai < 0 ? 100 : ai) - (bi < 0 ? 100 : bi);
     });
     list.classList.toggle("collections-grid", collectionsPage);
-    for (const [index, category] of (collectionsPage
+    for (const category of collectionsPage
       ? library.categories
-      : ordered.slice(0, 5)
-    ).entries()) {
+      : ordered.slice(0, 5)) {
       const row = element("div");
       row.className = "category-nav-row";
-      row.style.setProperty("--card-turn", `${((index % 5) - 2) * 4}deg`);
       const card = element("button");
       card.className = "collection-card";
       card.setAttribute(
         "aria-label",
         `Open collection ${category.name}${category.proposed ? " (proposed)" : ""}`,
       );
-      const mark = element("span", category.name.slice(0, 1).toUpperCase());
-      mark.className = "collection-initial";
-      mark.setAttribute("aria-hidden", "true");
       const label = element("span", category.name);
       label.className = "collection-label";
-      card.append(
-        mark,
-        label,
-        element(
-          "small",
-          `${library.documents.filter((d) => d.categoryId === category.id || (!d.categoryId && d.suggestion?.categoryId === category.id)).length} files${category.proposed ? " · proposed" : ""}`,
-        ),
-      );
       const members = library.documents.filter(
         (d) =>
           d.categoryId === category.id ||
           (!d.categoryId && d.suggestion?.categoryId === category.id),
+      );
+      card.append(
+        label,
+        element(
+          "small",
+          `${members.length} ${members.length === 1 ? "file" : "files"}${category.proposed ? " · proposed" : ""}`,
+        ),
       );
       const signature = members
         .map((d) => d.id + ":" + d.contentHash)
@@ -503,24 +506,6 @@ export function mountWorkspace(root: HTMLElement) {
       card.onclick = async (event) => {
         const epoch = ++navigationEpoch;
         navigationAnimation?.cancel();
-        if (
-          event.detail > 0 &&
-          !matchMedia("(prefers-reduced-motion: reduce)").matches
-        ) {
-          navigationAnimation = card.animate(
-            [
-              { transform: "rotateY(0deg) rotate(0deg)" },
-              { transform: "rotateY(180deg) rotate(4deg)" },
-              { transform: "rotateY(360deg) rotate(0deg)" },
-            ],
-            { duration: 250, easing: "cubic-bezier(0.23, 1, 0.32, 1)" },
-          );
-          try {
-            await navigationAnimation.finished;
-          } catch {
-            return;
-          }
-        }
         if (epoch !== navigationEpoch) return;
         useCollection(category.id);
         collectionsPage = false;
@@ -534,7 +519,7 @@ export function mountWorkspace(root: HTMLElement) {
         searchController?.abort();
         searchHits.clear();
         expansion = [];
-        for (const id of ["type-filter", "state-filter"])
+        for (const id of ["type-filter"])
           el<HTMLSelectElement>(id).value = "all";
         page = 0;
         await selectDocument(null);
@@ -562,7 +547,7 @@ export function mountWorkspace(root: HTMLElement) {
       row.append(descriptionButton);
       list.append(row);
     }
-    for (const id of ["collection-filter", "rule-category"]) {
+    for (const id of ["collection-filter"]) {
       const select = el<HTMLSelectElement>(id);
       const previous = select.value;
       select.replaceChildren();
@@ -624,125 +609,11 @@ export function mountWorkspace(root: HTMLElement) {
       }
     }
   }
-  function renderProposals() {
-    const container = el("proposed-collections");
-    container.replaceChildren();
-    const proposals = library.categories.filter((c) => c.proposed);
-    container.hidden = !proposals.length;
-    if (!proposals.length) return;
-    const panel = element("details");
-    panel.open = proposalsOpen;
-    panel.ontoggle = () => {
-      proposalsOpen = panel.open;
-    };
-    panel.append(
-      element(
-        "summary",
-        `${proposals.length} recommended collection${proposals.length === 1 ? "" : "s"} · review, rename or merge`,
-      ),
-    );
-    container.append(panel);
-    panel.append(
-      element("h2", "Recommended collections"),
-      element(
-        "p",
-        "A starting structure, not a decision. Keep, rename, merge or dismiss each collection. File placements still need review.",
-      ),
-    );
-    for (const category of proposals) {
-      const row = element("div");
-      row.className = "proposal-row";
-      row.append(
-        element("strong", category.name),
-        element("p", category.description),
-      );
-      const source = library.documents.find(
-        (d) => d.id === category.proposalSource,
-      );
-      if (source)
-        row.append(
-          element(
-            "small",
-            `From ${source.name}: “${category.proposalQuote}” · sampled excerpt`,
-          ),
-        );
-      row.append(
-        button(
-          "Keep collection",
-          () =>
-            void mutate(
-              (current) => ({
-                ...current,
-                categories: current.categories.map((c) =>
-                  c.id === category.id ? { ...c, proposed: false } : c,
-                ),
-              }),
-              "Collection approved. Placements still need review.",
-            ),
-        ),
-        button("Rename / edit", () => editCategory(category)),
-        button(
-          "Dismiss",
-          () =>
-            void mutate(
-              (current) => ({
-                ...invalidate(current),
-                categories: current.categories.filter(
-                  (c) => c.id !== category.id,
-                ),
-              }),
-              "Recommendation dismissed. Files remain saved and unassigned.",
-            ),
-        ),
-      );
-      const approved = library.categories.filter((c) => !c.proposed);
-      if (approved.length) {
-        const target = element("select");
-        target.setAttribute("aria-label", `Merge ${category.name} into`);
-        approved.forEach((c) => target.add(new Option(c.name, c.id)));
-        row.append(
-          target,
-          button(
-            "Merge into collection",
-            () =>
-              void mutate((current) => {
-                if (
-                  !current.categories.some(
-                    (c) => c.id === target.value && !c.proposed,
-                  )
-                )
-                  throw new Error("Merge target changed. Choose again.");
-                return {
-                  ...current,
-                  categories: current.categories.filter(
-                    (c) => c.id !== category.id,
-                  ),
-                  documents: current.documents.map((d) =>
-                    d.suggestion?.categoryId === category.id
-                      ? {
-                          ...d,
-                          suggestion: {
-                            ...d.suggestion,
-                            categoryId: target.value,
-                            outdated: true,
-                            reason: `You merged the recommended collection into ${target.selectedOptions[0]?.textContent}. Review whether this file belongs here.`,
-                          },
-                        }
-                      : d,
-                  ),
-                };
-              }, `Recommendation merged into ${target.selectedOptions[0]?.textContent}. Placements remain unconfirmed.`),
-          ),
-        );
-      }
-      panel.append(row);
-    }
-  }
   function visibleDocuments() {
     const query = el<HTMLInputElement>("document-search").value.trim();
     const category = el<HTMLSelectElement>("collection-filter").value;
     const type = el<HTMLSelectElement>("type-filter").value;
-    const state = el<HTMLSelectElement>("state-filter").value;
+    const state: string = "all";
     const sort = el<HTMLSelectElement>("sort-order").value;
     return library.documents
       .filter(
@@ -791,7 +662,7 @@ export function mountWorkspace(root: HTMLElement) {
       homeView &&
       !reviewOnly &&
       !el<HTMLInputElement>("document-search").value.trim() &&
-      ["collection-filter", "type-filter", "state-filter"].every(
+      ["collection-filter", "type-filter"].every(
         (id) => el<HTMLSelectElement>(id).value === "all",
       );
     const documents = isHome
@@ -816,17 +687,12 @@ export function mountWorkspace(root: HTMLElement) {
     el("reset-filters").hidden =
       !reviewOnly &&
       !el<HTMLInputElement>("document-search").value &&
-      ["collection-filter", "type-filter", "state-filter"].every(
+      ["collection-filter", "type-filter"].every(
         (id) => el<HTMLSelectElement>(id).value === "all",
       );
     const pages = Math.max(1, Math.ceil(documents.length / 25));
     page = Math.min(page, pages - 1);
     el("document-count").textContent = String(library.documents.length);
-    el("review-count").textContent = String(
-      library.documents.filter(
-        (document) => document.analysisState !== "confirmed",
-      ).length,
-    );
     el("all-filter").classList.toggle(
       "active",
       !collectionsPage &&
@@ -834,7 +700,6 @@ export function mountWorkspace(root: HTMLElement) {
         !reviewOnly &&
         el<HTMLSelectElement>("collection-filter").value === "all",
     );
-    el("review-filter").classList.toggle("active", reviewOnly);
     if (!documents.length) {
       const empty = element(
         "div",
@@ -845,9 +710,11 @@ export function mountWorkspace(root: HTMLElement) {
       empty.className = "empty";
       list.append(empty);
     }
+    const highlight = new Set(justMoved);
+    justMoved.clear();
     for (const document of documents.slice(page * 25, page * 25 + 25)) {
       const tile = element("div");
-      tile.className = `document-row${selected === document.id ? " selected" : ""}`;
+      tile.className = `document-row${selected === document.id ? " selected" : ""}${highlight.has(document.id) ? " just-moved" : ""}`;
       const row = element("button");
       row.type = "button";
       row.className = "document-open-button";
@@ -894,11 +761,14 @@ export function mountWorkspace(root: HTMLElement) {
       fileType.className = "file-type";
       const status = element("span", state);
       status.className = "sr-only";
+      // Only flag the exception: files that never leave this device.
       const privacyTag = element(
         "small",
-        isLocalOnly(library, document) ? "Local only" : "Cloud sortable",
+        isLocalOnly(library, document) ? "Private" : "",
       );
       privacyTag.className = "privacy-tag";
+      privacyTag.hidden = !isLocalOnly(library, document);
+      privacyTag.title = "Stays on this device; never sent for cloud sorting";
       row.append(
         fileType,
         privacyTag,
@@ -1276,6 +1146,7 @@ export function mountWorkspace(root: HTMLElement) {
       (selected === document.id ? selectedBody : undefined) ??
       (await readBody(document.id));
     const quote = document.suggestion?.quote || body?.text.slice(0, 320) || "";
+    if (action !== "skip") justMoved.add(document.id);
     const saved = await mutate(
       (current) => {
         if (
@@ -1330,192 +1201,17 @@ export function mountWorkspace(root: HTMLElement) {
     if (documentId === selected)
       el("document-detail").querySelector<HTMLSelectElement>("select")?.focus();
   }
-  function renderMemory() {
-    const list = el("memory-list");
-    list.replaceChildren();
-    const active = library.events.filter((event) => event.active);
-    list.append(element("h3", `${active.length} active approved examples`));
-    const memoryPages = Math.max(1, Math.ceil(active.length / 20));
-    memoryPage = Math.min(memoryPage, memoryPages - 1);
-    for (const event of active.slice(memoryPage * 20, memoryPage * 20 + 20)) {
-      const row = element("div");
-      row.className = "memory-item";
-      const source = library.documents.find(
-        (document) => document.id === event.documentId,
-      );
-      row.append(
-        element(
-          "strong",
-          `${source?.name ?? "Removed source"} → ${library.categories.find((category) => category.id === event.categoryId)?.name ?? "Removed category"}`,
-        ),
-        element("p", event.quote || "No excerpt; not eligible for retrieval."),
-        button(
-          "Forget example",
-          () =>
-            void mutate(
-              (current) => ({
-                ...invalidate(current),
-                events: current.events.map((item) =>
-                  item.id === event.id ? { ...item, active: false } : item,
-                ),
-              }),
-              "Example disabled for future requests. Undo can restore it.",
-            ),
-        ),
-      );
-      list.append(row);
-      if (source)
-        row.append(
-          button("View source", () => {
-            modal("memory-dialog").close();
-            void selectDocument(source.id);
-          }),
-          button("Edit excerpt", () => {
-            const editor = element("textarea");
-            editor.value = event.quote;
-            editor.maxLength = 320;
-            editor.setAttribute("aria-label", "Approved excerpt");
-            const feedback = element("p");
-            row.append(
-              editor,
-              button("Save excerpt", () => {
-                void readBody(source.id).then((body) => {
-                  if (
-                    !editor.value.trim() ||
-                    !body?.text.includes(editor.value)
-                  ) {
-                    feedback.textContent =
-                      "Use an exact excerpt from the source file (up to 320 characters).";
-                    return;
-                  }
-                  void mutate(
-                    (current) => ({
-                      ...invalidate(current),
-                      events: current.events.map((item) =>
-                        item.id === event.id
-                          ? { ...item, quote: editor.value, localOnly: true }
-                          : item,
-                      ),
-                    }),
-                    "Approved excerpt updated locally. Dependent suggestions invalidated.",
-                  );
-                });
-              }),
-              feedback,
-            );
-            editor.focus();
-          }),
-        );
-    }
-    if (memoryPages > 1) {
-      list.append(
-        element(
-          "p",
-          `Examples page ${memoryPage + 1} of ${memoryPages}. Older decisions remain saved and retrievable.`,
-        ),
-        button("Earlier examples", () => {
-          memoryPage = Math.max(0, memoryPage - 1);
-          renderMemory();
-        }),
-        button("Later examples", () => {
-          memoryPage = Math.min(memoryPages - 1, memoryPage + 1);
-          renderMemory();
-        }),
-      );
-    }
-    list.append(
-      element(
-        "h3",
-        `${library.rules.filter((rule) => rule.active).length} active rules`,
-      ),
-    );
-    for (const rule of library.rules) {
-      const row = element("div");
-      row.className = "memory-item";
-      row.append(
-        element(
-          "strong",
-          `“${rule.phrase}” → ${library.categories.find((category) => category.id === rule.categoryId)?.name ?? "Removed category"}`,
-        ),
-        element(
-          "p",
-          `${rule.active ? "Active" : "Disabled"} · ${rule.sourceIds.length} sources · local-only reference`,
-        ),
-        button(
-          rule.active ? "Disable rule" : "Enable rule",
-          () =>
-            void mutate(
-              (current) => ({
-                ...invalidate(current),
-                rules: current.rules.map((item) =>
-                  item.id === rule.id
-                    ? { ...item, active: !item.active }
-                    : item,
-                ),
-              }),
-              "Rule preference saved.",
-            ),
-        ),
-        button(
-          "Forget rule",
-          () =>
-            void mutate(
-              (current) => ({
-                ...invalidate(current),
-                rules: current.rules.filter((item) => item.id !== rule.id),
-              }),
-              "Rule removed from future context. Undo can restore it.",
-            ),
-        ),
-      );
-      list.append(row);
-      row.append(
-        button("Edit rule", () => {
-          editRuleId = rule.id;
-          el<HTMLInputElement>("rule-phrase").value = rule.phrase;
-          el<HTMLSelectElement>("rule-category").value = rule.categoryId;
-          el("rule-preview").replaceChildren(
-            element(
-              "p",
-              "Editing this rule. Preview the new scope before saving.",
-            ),
-          );
-          el("rule-phrase").focus();
-        }),
-      );
-    }
-  }
   function render() {
     renderImportReport();
     searchIndex.prune(library.documents);
     if (el<HTMLInputElement>("document-search").value.trim()) void runSearch();
     renderCategories();
-    renderProposals();
     renderDocuments();
     renderDetail();
-    renderMemory();
     el<HTMLInputElement>("global-private").checked = library.globalLocalOnly;
     el<HTMLInputElement>("cloud-sorting").checked =
       !!library.cloudSorting && !library.globalLocalOnly;
     organizer.render();
-    el<HTMLInputElement>("personalized").checked =
-      library.personalized ?? false;
-    const history = el("review-history");
-    history.replaceChildren();
-    library.events
-      .slice(-30)
-      .reverse()
-      .forEach((event) =>
-        history.append(
-          element(
-            "p",
-            `${event.createdAt} · ${event.action} · ${library.documents.find((document) => document.id === event.documentId)?.name ?? "Removed file / workspace"} · ${event.active ? "active" : "inactive"}`,
-          ),
-        ),
-      );
-    const sorted = [...timings].sort((a, b) => a - b);
-    el("performance-info").textContent =
-      `Metadata load: ${storageLoadMs.toFixed(0)} ms. ${sorted.length ? `${sorted.length} runs this session · p50 ${sorted[Math.floor((sorted.length - 1) * 0.5)].toFixed(0)} ms · p95 ${sorted[Math.floor((sorted.length - 1) * 0.95)].toFixed(0)} ms.` : "No document inference measured this session."} Download/initialization is separate. No per-app GPU memory estimate.`;
     protectControls();
   }
   function editCategory(category?: Category) {
@@ -1525,13 +1221,11 @@ export function mountWorkspace(root: HTMLElement) {
       ? "This collection definition was derived from local files and stays local after editing. Use a separate non-sensitive manual collection for cloud assistance."
       : "";
     el("category-form-title").textContent = category
-      ? "Edit category"
-      : "New category";
+      ? "Edit collection"
+      : "New collection";
     el<HTMLInputElement>("category-name").value = category?.name ?? "";
     el<HTMLTextAreaElement>("category-description").value =
       category?.description ?? "";
-    el<HTMLTextAreaElement>("category-examples").value =
-      category?.examples ?? "";
     el<HTMLInputElement>("category-private").checked =
       category?.localOnly ?? true;
     modal("category-dialog").querySelector(".remove-category")?.remove();
@@ -1593,7 +1287,7 @@ export function mountWorkspace(root: HTMLElement) {
         description: el<HTMLTextAreaElement>(
           "category-description",
         ).value.trim(),
-        examples: el<HTMLTextAreaElement>("category-examples").value.trim(),
+        examples: original?.examples ?? "",
         localOnly: original?.proposalSource
           ? true
           : el<HTMLInputElement>("category-private").checked,
@@ -1641,10 +1335,6 @@ export function mountWorkspace(root: HTMLElement) {
     modal("settings-dialog").showModal();
     void storageInfo();
   };
-  el("open-memory").onclick = () => {
-    renderMemory();
-    modal("memory-dialog").showModal();
-  };
   el<HTMLInputElement>("global-private").onchange = (event) =>
     void mutate(
       (current) => ({
@@ -1664,13 +1354,6 @@ export function mountWorkspace(root: HTMLElement) {
       on
         ? "Cloud sorting is on. Files that look personal stay on this device."
         : "Cloud sorting is off. Nothing is sent; the next sort will ask first.",
-    );
-  };
-  el("personalized").onchange = (event) => {
-    const personalized = (event.target as HTMLInputElement).checked;
-    void mutate(
-      (current) => ({ ...invalidate(current), personalized }),
-      "Analysis context mode saved for future requests.",
     );
   };
   el("undo-workspace").onclick = async () => {
@@ -1693,26 +1376,12 @@ export function mountWorkspace(root: HTMLElement) {
   async function storageInfo() {
     try {
       const estimate = await navigator.storage.estimate();
-      const persistent = await navigator.storage.persisted();
       el("storage-info").textContent =
-        `Approximate origin usage: ${((estimate.usage ?? 0) / 1_000_000).toFixed(1)} MB of ${((estimate.quota ?? 0) / 1_000_000).toFixed(0)} MB quota. Persistence: ${persistent ? "granted" : "not granted"}. This does not measure model size or GPU memory.`;
+        `Using about ${((estimate.usage ?? 0) / 1_000_000).toFixed(1)} MB in this browser.`;
     } catch {
-      el("storage-info").textContent = "Storage estimates unavailable.";
+      el("storage-info").textContent = "";
     }
   }
-  el("protect-storage").onclick = async () => {
-    try {
-      const granted = await navigator.storage.persist();
-      say(
-        granted
-          ? "Persistence granted. Keep a separate backup."
-          : "Persistence not granted. Local saves still work; keep a backup.",
-      );
-      await storageInfo();
-    } catch {
-      say("Persistence unavailable. Keep a backup.", true);
-    }
-  };
   el("export-backup").onclick = async () => {
     try {
       const text = await exportArchive(library);
@@ -1784,86 +1453,6 @@ export function mountWorkspace(root: HTMLElement) {
     } catch (error) {
       say(error instanceof Error ? error.message : "Restore failed.", true);
     }
-  };
-  el<HTMLFormElement>("rule-form").onsubmit = async (event) => {
-    event.preventDefault();
-    const phrase = el<HTMLInputElement>("rule-phrase").value.trim();
-    const categoryId = el<HTMLSelectElement>("rule-category").value;
-    const preview = el("rule-preview");
-    preview.replaceChildren();
-    if (phrase.length < 3 || !categoryId || library.rules.length >= 200) {
-      preview.append(
-        element("p", "Choose a phrase/category; up to 200 rules supported."),
-      );
-      return;
-    }
-    const affected: DocumentMeta[] = [];
-    for (const document of library.documents) {
-      const body = await readBody(document.id);
-      if (body?.text.toLowerCase().includes(phrase.toLowerCase()))
-        affected.push(document);
-    }
-    preview.append(
-      element(
-        "p",
-        `Matches ${affected.length} saved files. This preference supplies context; it does not change existing assignments.`,
-      ),
-    );
-    affected
-      .slice(0, 20)
-      .forEach((document) => preview.append(element("p", document.name)));
-    const sources = affected.filter(
-      (document) =>
-        document.analysisState === "confirmed" &&
-        document.categoryId === categoryId,
-    );
-    if (!sources.length) {
-      preview.append(
-        element(
-          "p",
-          "First confirm one matching file in this category as provenance.",
-        ),
-      );
-      return;
-    }
-    preview.append(
-      button(
-        "Yes, remember this preference",
-        () =>
-          void mutate(
-            (current) => ({
-              ...invalidate(current),
-              rules: [
-                ...current.rules.filter((rule) => rule.id !== editRuleId),
-                {
-                  id: editRuleId ?? crypto.randomUUID(),
-                  phrase,
-                  categoryId,
-                  sourceIds: sources.map((document) => document.id),
-                  localOnly: true,
-                  active: true,
-                  createdAt: new Date().toISOString(),
-                },
-              ],
-            }),
-            "Preference saved as local context, not an automatic assignment.",
-          ).then((ok) => {
-            if (ok) {
-              editRuleId = null;
-              preview.replaceChildren(element("p", "Preference saved."));
-            }
-          }),
-        "primary",
-      ),
-      button("Only this file / do not generalize", () => {
-        editRuleId = null;
-        preview.replaceChildren(element("p", "No broader rule saved."));
-      }),
-      button("No", () => {
-        editRuleId = null;
-        preview.replaceChildren(element("p", "No rule saved."));
-      }),
-    );
   };
   async function importFiles(
     files: File[],
@@ -2364,7 +1953,7 @@ export function mountWorkspace(root: HTMLElement) {
     reviewOnly = false;
     page = 0;
     el<HTMLInputElement>("document-search").value = "";
-    for (const id of ["collection-filter", "type-filter", "state-filter"])
+    for (const id of ["collection-filter", "type-filter"])
       el<HTMLSelectElement>(id).value = "all";
     void runSearch();
     el("document-search").focus();
@@ -2412,7 +2001,7 @@ export function mountWorkspace(root: HTMLElement) {
     searchTimer = setTimeout(() => void runSearch(), 160);
     protectControls();
   };
-  for (const id of ["type-filter", "state-filter", "sort-order", "view-mode"])
+  for (const id of ["type-filter", "sort-order", "view-mode"])
     el(id).onchange = () => {
       el<HTMLDetailsElement>("browse-filters").open = false;
       page = 0;
@@ -2538,18 +2127,6 @@ export function mountWorkspace(root: HTMLElement) {
     page = 0;
     renderDocuments();
   };
-  el("review-filter").onclick = () => {
-    void selectDocument(null);
-    collectionsPage = false;
-    renderCategories();
-    navigationEpoch++;
-    navigationAnimation?.cancel();
-    homeView = false;
-    el<HTMLSelectElement>("collection-filter").value = "all";
-    reviewOnly = true;
-    page = 0;
-    renderDocuments();
-  };
   el("prev-page").onclick = () => {
     page = Math.max(0, page - 1);
     renderDocuments();
@@ -2565,11 +2142,9 @@ export function mountWorkspace(root: HTMLElement) {
     if (id !== selected) void selectDocument(id, false);
   });
   protectControls();
-  const started = performance.now();
   void readLibrary()
     .then((saved) => {
       library = saved;
-      storageLoadMs = performance.now() - started;
       ready = true;
       render();
       say("Local workspace ready. Changes save automatically in this browser.");
