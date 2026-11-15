@@ -115,6 +115,33 @@ export function mountWorkspace(root: HTMLElement) {
   }
   // Files the person just moved themselves get a brief highlight on their card.
   const justMoved = new Set<string>();
+  // Topic chosen from a chip; filters the document list.
+  let topicFilter: string | null = null;
+  const sameTopic = (a: string, b: string) =>
+    a.trim().toLowerCase() === b.trim().toLowerCase();
+  function topicChips(topics: string[], limit = 5) {
+    const wrap = element("div");
+    wrap.className = "topic-chips";
+    for (const topic of topics.slice(0, limit)) {
+      const chip = button(topic, () => filterByTopic(topic), "topic-chip");
+      chip.setAttribute("aria-label", `Show files about ${topic}`);
+      wrap.append(chip);
+    }
+    return wrap;
+  }
+  function filterByTopic(topic: string) {
+    void selectDocument(null);
+    collectionsPage = false;
+    homeView = false;
+    reviewOnly = false;
+    topicFilter = topic;
+    el<HTMLSelectElement>("collection-filter").value = "all";
+    el<HTMLInputElement>("document-search").value = "";
+    page = 0;
+    renderCategories();
+    renderDocuments();
+    el("view-title").focus();
+  }
   let homeView = true;
   let navigationAnimation: Animation | undefined;
   let navigationEpoch = 0;
@@ -498,8 +525,12 @@ export function mountWorkspace(root: HTMLElement) {
         .sort()
         .join("|");
       const summary = collectionDescriptions.get(category.id);
-      if (summary?.signature === signature) {
-        const text = element("span", summary.text);
+      // A description written on demand (✧) wins; otherwise show the one from
+      // sorting or the one the person wrote.
+      const describedText =
+        summary?.signature === signature ? summary.text : category.description;
+      if (describedText) {
+        const text = element("span", describedText);
         text.className = "collection-description";
         card.append(text);
       }
@@ -512,6 +543,7 @@ export function mountWorkspace(root: HTMLElement) {
         homeView = false;
         el<HTMLSelectElement>("view-mode").value = "grid";
         reviewOnly = false;
+        topicFilter = null;
         el<HTMLSelectElement>("collection-filter").value = category.id;
         el<HTMLInputElement>("document-search").value = "";
         searchEpoch++;
@@ -617,6 +649,11 @@ export function mountWorkspace(root: HTMLElement) {
     const sort = el<HTMLSelectElement>("sort-order").value;
     return library.documents
       .filter(
+        (d) =>
+          !topicFilter ||
+          !!d.summary?.topics.some((t) => sameTopic(t, topicFilter!)),
+      )
+      .filter(
         (document) =>
           (!query || searchHits.has(document.id)) &&
           matchesFileType(document.name, type) &&
@@ -661,6 +698,7 @@ export function mountWorkspace(root: HTMLElement) {
     const isHome =
       homeView &&
       !reviewOnly &&
+      !topicFilter &&
       !el<HTMLInputElement>("document-search").value.trim() &&
       ["collection-filter", "type-filter"].every(
         (id) => el<HTMLSelectElement>(id).value === "all",
@@ -681,11 +719,21 @@ export function mountWorkspace(root: HTMLElement) {
     );
     el("view-title").textContent = isHome
       ? "Recently added"
-      : (collection?.name ?? (reviewOnly ? "Needs review" : "All documents"));
+      : topicFilter
+        ? `Files about ${topicFilter}`
+        : (collection?.name ?? "All documents");
+    const topicChip = el<HTMLButtonElement>("topic-filter-chip");
+    topicChip.hidden = !topicFilter;
+    topicChip.textContent = topicFilter ? `${topicFilter}  ×` : "";
+    topicChip.setAttribute(
+      "aria-label",
+      topicFilter ? `Remove topic filter ${topicFilter}` : "",
+    );
     el("results-count").textContent =
       `${documents.length} ${documents.length === 1 ? "document" : "documents"}`;
     el("reset-filters").hidden =
       !reviewOnly &&
+      !topicFilter &&
       !el<HTMLInputElement>("document-search").value &&
       ["collection-filter", "type-filter"].every(
         (id) => el<HTMLSelectElement>(id).value === "all",
@@ -822,7 +870,10 @@ export function mountWorkspace(root: HTMLElement) {
         ).find((control) => control.dataset.documentCollection === document.id);
         (target ?? el("view-title")).focus({ preventScroll: true });
       };
-      tile.append(row, collectionPicker);
+      tile.append(row);
+      if (document.summary?.topics.length)
+        tile.append(topicChips(document.summary.topics, 3));
+      tile.append(collectionPicker);
       list.append(tile);
     }
     if (focusedLabel)
@@ -875,12 +926,8 @@ export function mountWorkspace(root: HTMLElement) {
       element(
         "summary",
         isLocalOnly(library, document)
-          ? `Local only · protected by ${library.globalLocalOnly ? "workspace" : document.localOnly ? "document" : "category"}`
-          : "Cloud consent required",
-      ),
-      element(
-        "p",
-        "Turning off protection changes eligibility only. Cloud use still needs exact preview and approval.",
+          ? `Private: stays on this device${library.globalLocalOnly ? " (whole library)" : document.localOnly ? "" : " (its collection is private)"}`
+          : "Can be sorted with cloud help (summary only)",
       ),
     );
     const privateLabel = element("label");
@@ -888,14 +935,18 @@ export function mountWorkspace(root: HTMLElement) {
     const privateInput = element("input");
     privateInput.type = "checkbox";
     privateInput.checked = document.localOnly;
-    privateInput.setAttribute("aria-label", `Local only for ${document.name}`);
+    privateInput.setAttribute(
+      "aria-label",
+      `Keep ${document.name} on this device`,
+    );
     privateInput.onchange = () =>
       void updateDocument(document.id, { localOnly: privateInput.checked });
-    privateLabel.append(privateInput, " Keep this document local only");
+    privateInput.classList.add("switch");
+    privateLabel.append(privateInput, " Keep this file on this device");
     privacy.append(privateLabel);
-    const assignment = element("label", "Category");
+    const assignment = element("label", "Collection");
     const select = element("select");
-    select.setAttribute("aria-label", `Category for ${document.name}`);
+    select.setAttribute("aria-label", `Collection of ${document.name}`);
     select.add(new Option("Unassigned", ""));
     library.categories.forEach((category) =>
       select.add(new Option(category.name, category.id)),
@@ -903,189 +954,36 @@ export function mountWorkspace(root: HTMLElement) {
     select.value = document.categoryId ?? "";
     select.onchange = () => void decide("change", select.value || null);
     assignment.append(select);
-    const suggestion = document.suggestion;
-    const result = element("div");
-    result.className = "suggestion-box";
-    if (suggestion) {
-      if (suggestion.outdated)
-        result.append(
-          element(
-            "p",
-            "This suggestion used earlier review context. Inspect it yourself or analyze again to use your latest decisions.",
-          ),
-        );
-      result.append(
-        element("span", `Unconfirmed ${suggestion.source} suggestion`),
-        element(
-          "h3",
-          library.categories.find(
-            (category) => category.id === suggestion.categoryId,
-          )?.name ?? "Needs your intent",
-        ),
-        element("p", suggestion.reason),
+    // What the on-device model wrote about this file (no new AI call).
+    const result = element("section");
+    result.className = "file-summary";
+    result.append(element("h3", "Summary"));
+    if (document.summary) {
+      result.append(element("p", document.summary.text));
+      if (document.summary.topics.length)
+        result.append(topicChips(document.summary.topics));
+      const where = element(
+        "p",
+        "Written on this device when the file was sorted.",
       );
-      if (suggestion.needsIntent)
-        result.append(
-          element(
-            "p",
-            "What do you use this document for? Choose its collection above, or confirm the suggestion if it fits. Subjects and course names remain searchable.",
-          ),
-        );
-      if (suggestion.quote)
-        result.append(element("blockquote", suggestion.quote));
-      result.append(
-        element(
-          "p",
-          `Analyzed ${suggestion.inputCharacters.toLocaleString()} of ${document.characters.toLocaleString()} saved characters across ${suggestion.ranges.length} excerpt(s). ${document.coverage.truncated ? "Extraction was also truncated. " : ""}${suggestion.needsIntent ? "Please resolve the personal intent before confirming." : ""}`,
-        ),
+      where.className = "note";
+      result.append(where);
+    } else {
+      const none = element(
+        "p",
+        "Not summarized yet. Sort unfiled files to read them on this device.",
       );
-      const actions = element("div");
-      actions.className = "actions";
-      if (suggestion.categoryId)
-        actions.append(
-          button(
-            "Correct",
-            () => void decide("confirm", suggestion.categoryId),
-            "primary",
-          ),
-        );
-      actions.append(
-        button("Change", () => select.focus()),
-        button("Skip", () => void decide("skip", null)),
-      );
-      result.append(actions);
-      if (suggestion.categoryId) {
-        const peers = library.documents.filter(
-          (d) =>
-            d.suggestion?.categoryId === suggestion.categoryId &&
-            d.analysisState === "review",
-        );
-        if (peers.length > 1) {
-          const group = element("details");
-          group.append(
-            element(
-              "summary",
-              `Review ${peers.length} files with this proposed collection`,
-            ),
-            element(
-              "p",
-              "Similar content may have different purposes. Select only files that share your intended collection, then choose where they belong.",
-            ),
-          );
-          const checks = new Map<string, HTMLInputElement>();
-          for (const peer of peers.slice(0, 30)) {
-            const label = element("label");
-            label.className = "check-label";
-            const check = element("input");
-            check.type = "checkbox";
-            check.checked = peer.id === document.id;
-            checks.set(peer.id, check);
-            label.append(check, peer.name);
-            group.append(label);
-          }
-          const choice = element("select");
-          choice.setAttribute("aria-label", "Collection for selected files");
-          library.categories.forEach((c) =>
-            choice.add(
-              new Option(`${c.name}${c.proposed ? " (proposed)" : ""}`, c.id),
-            ),
-          );
-          choice.value = suggestion.categoryId;
-          group.append(
-            choice,
-            button("Confirm selected files", () => {
-              const ids = [...checks]
-                .filter(([, check]) => check.checked)
-                .map(([id]) => id);
-              if (!ids.length) {
-                say("Select at least one file first.", true);
-                return;
-              }
-              void mutate((current) => {
-                const chosen = current.categories.find(
-                  (c) => c.id === choice.value,
-                );
-                if (!chosen)
-                  throw new Error(
-                    "Collection changed. Review the selection again.",
-                  );
-                const targets = current.documents.filter(
-                  (d) =>
-                    ids.includes(d.id) &&
-                    d.analysisState === "review" &&
-                    d.suggestion?.categoryId === suggestion.categoryId,
-                );
-                if (targets.length !== ids.length)
-                  throw new Error(
-                    "Some suggestions changed. Review the selection again.",
-                  );
-                const next = reviewContextChanged(current);
-                return {
-                  ...next,
-                  categories: next.categories.map((c) =>
-                    c.id === chosen.id ? { ...c, proposed: false } : c,
-                  ),
-                  documents: next.documents.map((d) =>
-                    ids.includes(d.id)
-                      ? {
-                          ...d,
-                          categoryId: chosen.id,
-                          suggestion: undefined,
-                          analysisState: "confirmed" as const,
-                          analysisError: undefined,
-                        }
-                      : d,
-                  ),
-                  events: [
-                    ...current.events.map((e) =>
-                      ids.includes(e.documentId) ? { ...e, active: false } : e,
-                    ),
-                    ...targets.map((d) =>
-                      reviewEvent(
-                        current,
-                        d,
-                        "change",
-                        chosen.id,
-                        d.suggestion?.quote ?? "",
-                      ),
-                    ),
-                  ],
-                };
-              }, `Selected files confirmed. Other files were not assigned; Undo is available.`);
-            }),
-          );
-          result.append(group);
-        }
-      }
-      if (suggestion.exampleIds.length || suggestion.ruleIds.length)
-        result.append(
-          element(
-            "p",
-            `Context: ${suggestion.exampleIds.length} approved examples, ${suggestion.ruleIds.length} confirmed rules. Inspect Memory for sources.`,
-          ),
-        );
-    } else
-      result.append(
-        element(
-          "p",
-          document.analysisState === "confirmed"
-            ? `Confirmed assignment: ${category?.name ?? "Unassigned"}.`
-            : document.analysisState === "skipped"
-              ? "Skipped. No category was inferred from this choice."
-              : "No current AI suggestion. Manual assignment is always available.",
-        ),
-      );
+      none.className = "note";
+      result.append(none);
+    }
     if (document.analysisError) {
       const error = element("p", document.analysisError);
       error.className = "inline-error";
       result.append(error);
     }
-    const actions = element("div");
-    actions.className = "actions";
     const coverage = element("details");
-    coverage.open = true;
     coverage.append(
-      element("summary", "Text & extraction coverage"),
+      element("summary", "Extracted text"),
       element("p", document.coverage.note),
       element(
         "p",
@@ -1133,7 +1031,7 @@ export function mountWorkspace(root: HTMLElement) {
         ),
       "danger-button",
     );
-    panel.append(top, privacy, assignment, result, actions, coverage, remove);
+    panel.append(top, result, assignment, privacy, coverage, remove);
   }
   async function decide(
     action: "confirm" | "change" | "skip",
@@ -1943,6 +1841,11 @@ export function mountWorkspace(root: HTMLElement) {
     controller?.abort();
     say("Stopping. Work finished so far is kept; nothing else is sent.");
   };
+  el("topic-filter-chip").onclick = () => {
+    topicFilter = null;
+    page = 0;
+    renderDocuments();
+  };
   el("reset-filters").onclick = () => {
     homeView = false;
     searchController?.abort();
@@ -1951,6 +1854,7 @@ export function mountWorkspace(root: HTMLElement) {
     expansion = [];
     searchHits.clear();
     reviewOnly = false;
+    topicFilter = null;
     page = 0;
     el<HTMLInputElement>("document-search").value = "";
     for (const id of ["collection-filter", "type-filter"])
@@ -2072,6 +1976,7 @@ export function mountWorkspace(root: HTMLElement) {
     navigationAnimation?.cancel();
     collectionsPage = true;
     reviewOnly = false;
+    topicFilter = null;
     homeView = false;
     void selectDocument(null);
     renderCategories();
@@ -2124,6 +2029,7 @@ export function mountWorkspace(root: HTMLElement) {
     renderCategories();
     el<HTMLSelectElement>("collection-filter").value = "all";
     reviewOnly = false;
+    topicFilter = null;
     page = 0;
     renderDocuments();
   };

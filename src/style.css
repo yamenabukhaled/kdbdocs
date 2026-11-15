@@ -2673,3 +2673,59 @@ dialog h3:first-of-type {
     animation: none;
   }
 }
+
+/* ===== Feature: what the AI knows (summaries, topics) ===== */
+.topic-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.document-row > .topic-chips {
+  padding: 0 16px 10px;
+}
+button.topic-chip {
+  min-height: 0;
+  padding: 3px 10px;
+  border: 1px solid #d3dccd;
+  border-radius: 999px;
+  background: #ffffffa6;
+  color: #3b5340;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.4;
+}
+button.topic-chip:hover:enabled {
+  background: #fff;
+  border-color: #a9bb9f;
+}
+button.topic-chip.active {
+  margin-left: 10px;
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+button.topic-chip[hidden] {
+  display: none;
+}
+.file-summary {
+  padding: 14px 16px;
+  margin: 12px 0;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--accent);
+  border-radius: 12px;
+  background: var(--surface);
+}
+.file-summary h3 {
+  margin: 0 0 6px;
+  font-size: 14px;
+}
+.file-summary p {
+  margin: 0 0 8px;
+  line-height: 1.5;
+}
+.file-summary .topic-chips {
+  margin-bottom: 8px;
+}
+.library-results #topic-filter-chip {
+  margin-right: auto;
+}

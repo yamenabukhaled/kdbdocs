@@ -170,7 +170,7 @@ test("mixed PDF/text library persists; manual review and undo stay local", async
     await page.evaluate(() => (window as unknown as { pwned: boolean }).pwned),
   ).toBeUndefined();
   await page
-    .getByRole("combobox", { name: "Category for private.txt" })
+    .getByRole("combobox", { name: "Collection of private.txt" })
     .selectOption({ label: "Coursework" });
   await expect(page.locator("#workspace-message")).toContainText(
     "Decision saved",
@@ -190,7 +190,7 @@ test("mixed PDF/text library persists; manual review and undo stay local", async
     .getByRole("button", { name: "Open private.txt", exact: true })
     .click();
   await expect(
-    page.getByRole("combobox", { name: "Category for private.txt" }),
+    page.getByRole("combobox", { name: "Collection of private.txt" }),
   ).not.toHaveValue("");
   await page
     .getByRole("button", { name: "Remove from library", exact: true })
@@ -220,7 +220,7 @@ test("backup download, preview and restore round trip into an empty browser", as
   await category(page);
   await textFile(page);
   await page
-    .getByRole("combobox", { name: "Category for reading.txt" })
+    .getByRole("combobox", { name: "Collection of reading.txt" })
     .selectOption({ label: "Coursework" });
   await expect(page.locator("#workspace-message")).toContainText(
     "Decision saved",

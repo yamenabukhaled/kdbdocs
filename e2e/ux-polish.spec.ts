@@ -189,7 +189,7 @@ test("collection cards filter on click, keyboard and reduced motion; Home stays 
     .getByRole("button", { name: "Open file-6.txt", exact: true })
     .click();
   await page
-    .getByLabel("Category for file-6.txt", { exact: true })
+    .getByLabel("Collection of file-6.txt", { exact: true })
     .selectOption({ label: "Coursework" });
   await page.getByRole("button", { name: "Close", exact: true }).click();
   await page.locator("#home-filter").click();

@@ -124,7 +124,7 @@ test("30/100/500 document libraries load metadata lazily and assignment writes n
     });
     const start = Date.now();
     await page
-      .getByRole("combobox", { name: "Category for doc-000.txt", exact: true })
+      .getByRole("combobox", { name: "Collection of doc-000.txt", exact: true })
       .selectOption("c");
     await expect(page.locator("#workspace-message")).toContainText(
       "Decision saved",
