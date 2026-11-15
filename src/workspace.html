@@ -1,0 +1,415 @@
+<div class="workspace-heading">
+  <aside class="library-nav" aria-label="Library views">
+    <button id="home-filter" class="nav-button">Home</button
+    ><button id="collections-filter" class="nav-button">All Collections</button>
+    <button id="all-filter" class="nav-button">
+      All documents <span id="document-count"></span></button
+    ><button id="review-filter" class="nav-button">
+      Needs review <span id="review-count"></span>
+    </button>
+  </aside>
+  <div>
+    <h1 class="sr-only">Document library</h1>
+  </div>
+  <div class="actions">
+    <button id="open-upload-context" class="secondary" hidden>+ Upload</button
+    ><button id="open-memory" class="secondary">Memory</button
+    ><button id="open-settings" class="secondary">Settings & backup</button
+    ><input
+      id="library-files"
+      type="file"
+      multiple
+      accept=".pdf,.txt,.md"
+      hidden
+    />
+  </div>
+</div>
+<div id="workspace-message" class="notice" role="status" aria-live="polite">
+  Opening local storage…
+</div>
+<section
+  id="import-report"
+  class="notice"
+  hidden
+  aria-label="Last import status"
+>
+  <p id="import-report-text" role="status" aria-live="polite"></p>
+  <button id="stop-import" class="secondary" hidden>
+    Stop after current file
+  </button>
+  <progress id="import-report-progress" aria-label="Files saved"></progress>
+  <button id="dismiss-import-report" class="secondary">
+    Dismiss import status
+  </button>
+</section>
+<dialog id="folder-dialog" aria-labelledby="folder-title">
+  <div class="dialog-heading">
+    <h2 id="folder-title">Preview folder import</h2>
+    <button
+      id="cancel-folder"
+      class="icon-button"
+      aria-label="Cancel folder import"
+    >
+      ×
+    </button>
+  </div>
+  <p id="folder-summary" role="status" aria-live="polite">
+    Scanning folder names and sizes…
+  </p>
+  <p class="note">
+    Includes subfolders. Relative paths stay local and provide hints, not
+    confirmed categories. Originals stay untouched. No parsing or AI runs before
+    you confirm.
+  </p>
+  <p class="note">
+    Dependency/version-control folders (node_modules, .git, .svn, .hg, .venv,
+    venv, __pycache__) and common system metadata are skipped.
+  </p>
+  <div id="folder-issues" class="note"></div>
+  <div class="actions">
+    <button id="folder-select-all" class="secondary">
+      Select supported files</button
+    ><button id="folder-select-none" class="secondary">Clear selection</button>
+  </div>
+  <div id="folder-file-list" aria-label="Folder files"></div>
+  <p id="folder-selection" role="status" aria-live="polite"></p>
+  <label class="check-label"
+    ><input id="folder-auto" type="checkbox" /> Recommend collections and
+    placements locally for this import</label
+  >
+  <p class="note">
+    Large folders are split into batches of up to 30 files / 50 MB; the library
+    limit is 500 files and 20 million extracted characters. You can stop after
+    the current file. Saved progress remains available if storage fills.
+  </p>
+  <div class="actions">
+    <button id="confirm-folder">Import selected files</button
+    ><button id="close-folder" class="secondary">Cancel</button>
+  </div>
+</dialog>
+<section
+  id="proposed-collections"
+  aria-label="Recommended collections"
+  hidden
+></section>
+<div class="home-tools">
+  <section class="collection-shelf" aria-label="Collections">
+    <div class="nav-heading">
+      <h2>Collections</h2>
+      <button id="new-category" class="icon-button" aria-label="Add category">
+        + New collection
+      </button>
+    </div>
+    <div class="collection-deck">
+      <div id="category-list"></div>
+      <section id="drop-zone" aria-label="Drop documents" tabindex="0">
+        <button id="open-upload" aria-label="Upload Files/Folder">
+          <span aria-hidden="true">+</span>Upload Files/Folder
+        </button>
+      </section>
+    </div>
+  </section>
+</div>
+<dialog id="upload-dialog" aria-labelledby="upload-title">
+  <div class="dialog-heading">
+    <h2 id="upload-title">Upload files or folder</h2>
+    <button id="close-upload" class="icon-button" aria-label="Close upload">
+      ×
+    </button>
+  </div>
+  <section id="upload-options" aria-label="Import options" tabindex="0">
+    <strong>Add documents</strong>
+
+    <button id="choose-documents" class="secondary">Choose files</button>
+    <button id="choose-folder" class="secondary">Choose folder</button>
+    <input
+      id="library-folder"
+      type="file"
+      webkitdirectory
+      multiple
+      hidden
+      aria-label="Choose folder"
+    />
+
+    <label class="check-label"
+      ><input id="auto-organize" type="checkbox" checked /> Sort into
+      collections</label
+    >
+    <p class="note">
+      Files are summarized on this device and sorted straight away. Any
+      questions appear above your files. Undo reverses the whole sort.
+    </p>
+  </section>
+</dialog>
+<div class="app-layout">
+  <section class="library-panel">
+    <div class="documents-heading">
+      <div class="organize-actions">
+        <button id="organize-button" hidden>Sort unfiled</button
+        ><button id="cancel-analysis" class="secondary" hidden>Stop</button
+        ><button id="undo-workspace" class="secondary">Undo</button>
+      </div>
+      <h2 id="view-title" tabindex="-1">Recently added</h2>
+    </div>
+    <div id="organize-panel" aria-live="polite" hidden></div>
+    <div class="search-toolbox">
+      <div class="filters">
+        <input
+          id="document-search"
+          type="search"
+          aria-label="Search documents"
+          placeholder="Remember a phrase or something about a document…"
+        /><select id="collection-filter" aria-label="Filter collection">
+          <option value="all">All documents</option>
+          <option value="unassigned">Unassigned</option>
+        </select>
+      </div>
+      <details id="browse-filters">
+        <summary>Filters & sort</summary>
+        <div class="browse-options">
+          <select id="type-filter" aria-label="Filter file type">
+            <option value="all">All file types</option>
+            <option value="pdf">PDF</option>
+            <option value="txt">Text</option>
+            <option value="md">Markdown</option>
+            <option value="docx">Word (.docx)</option>
+            <option value="pptx">PowerPoint (.pptx)</option>
+            <option value="code">All source code</option>
+            <option value="python">Python</option>
+            <option value="javascript">JavaScript</option>
+            <option value="typescript">TypeScript</option>
+            <option value="java">Java</option>
+            <option value="r">R</option>
+            <option value="data">All text/data</option>
+          </select>
+          <select id="state-filter" aria-label="Filter review state">
+            <option value="all">All review states</option>
+            <option value="review">Suggestions to review</option>
+            <option value="confirmed">Confirmed</option>
+            <option value="pending">Not reviewed</option>
+            <option value="error">Errors</option>
+          </select>
+          <select id="sort-order" aria-label="Sort documents">
+            <option value="relevance">Relevance / newest</option>
+            <option value="newest">Newest first</option>
+            <option value="name">Name A–Z</option>
+          </select>
+          <select id="view-mode" aria-label="Document view">
+            <option value="grid">Grid</option>
+            <option value="list">List</option>
+          </select>
+          <button id="related-search" class="secondary">
+            Search related meaning locally
+          </button>
+        </div>
+      </details>
+    </div>
+    <div class="library-results">
+      <strong id="results-count" role="status"></strong
+      ><button id="reset-filters" class="quiet-button" hidden>
+        Clear search & filters
+      </button>
+    </div>
+    <p id="search-status" class="note" role="status">
+      Search filenames and extracted text. Use quotes for an exact phrase.
+      Unextracted content is not searchable.
+    </p>
+    <div id="document-list"></div>
+    <div class="pagination" id="library-pagination">
+      <button id="prev-page" class="secondary">Previous</button
+      ><span id="page-label"></span
+      ><button id="next-page" class="secondary">Next</button>
+    </div>
+  </section>
+  <section
+    tabindex="-1"
+    id="document-detail"
+    class="detail-panel"
+    aria-label="Selected document"
+  >
+    <div class="empty">
+      Choose a document to inspect its text, privacy and suggestions.
+    </div>
+  </section>
+</div>
+<dialog id="category-dialog" aria-labelledby="category-form-title">
+  <form id="category-form">
+    <div class="dialog-heading">
+      <h2 id="category-form-title">New category</h2>
+      <button
+        type="button"
+        data-close="category-dialog"
+        class="icon-button"
+        aria-label="Close category editor"
+      >
+        ×
+      </button>
+    </div>
+    <label
+      >Name<input
+        id="category-name"
+        maxlength="60"
+        required
+        placeholder="e.g. Coursework" /></label
+    ><label
+      >Description<textarea
+        id="category-description"
+        maxlength="2000"
+        rows="3"
+        placeholder="What belongs here, and why?"
+      ></textarea></label
+    ><label
+      >Examples (optional)<textarea
+        id="category-examples"
+        maxlength="4000"
+        rows="2"
+        placeholder="Your own examples"
+      ></textarea></label
+    ><label class="check-label"
+      ><input id="category-private" type="checkbox" checked /> Keep this
+      category local only</label
+    >
+    <p class="note">
+      Used as context, not model training. Analysis includes the first 240
+      characters of each description/example; keep distinguishing intent near
+      the start. Turning off privacy never grants cloud consent.
+    </p>
+    <div class="actions">
+      <button type="submit" id="save-category">Save category</button>
+    </div>
+    <p id="category-error" role="alert"></p>
+  </form>
+</dialog>
+<dialog id="settings-dialog" aria-label="Workspace settings">
+  <div class="dialog-heading">
+    <h2>Workspace settings</h2>
+    <button
+      data-close="settings-dialog"
+      class="icon-button"
+      aria-label="Close settings"
+    >
+      ×
+    </button>
+  </div>
+  <label class="check-label"
+    ><input id="cloud-sorting" type="checkbox" /> Sort with cloud help</label
+  >
+  <p class="note">
+    Sends device-written summaries, file names and folder names (never document
+    text) to choose collections. Files that look personal stay on this device.
+  </p>
+  <label class="check-label"
+    ><input id="global-private" type="checkbox" checked /> Keep the entire
+    workspace local only</label
+  >
+  <p class="note">
+    Overrides everything else: nothing is sent while this is on.
+  </p>
+  <label class="check-label"
+    ><input id="personalized" type="checkbox" /> Include approved examples and
+    rules in analysis</label
+  >
+  <p class="note">
+    Off gives the generic baseline. This changes request context; it does not
+    retrain the model.
+  </p>
+  <h3>Local recovery</h3>
+  <p>
+    Backups include extracted text, private category definitions and memory.
+    Choose where you save them carefully. This app adds no encryption.
+  </p>
+  <div class="actions">
+    <button id="clear-imports" class="secondary">
+      Clear imported files (undoable)
+    </button>
+    <p class="note">
+      Removes imported copies and unapproved collection proposals from this
+      browser. Originals are untouched. Undo can restore this batch until the
+      next saved change.
+    </p>
+    <button id="export-backup">Export backup</button
+    ><label class="file-action"
+      >Preview a restore<input
+        id="restore-file"
+        type="file"
+        accept=".json,application/json"
+    /></label>
+  </div>
+  <p id="storage-info" class="note">Storage estimate not checked.</p>
+  <button id="protect-storage" class="secondary">
+    Request persistent storage
+  </button>
+  <p class="note">
+    Saved in this browser profile at this exact address. Clearing site data
+    removes it; persistence is not a backup.
+  </p>
+  <h3>Local performance</h3>
+  <p id="performance-info" class="note">
+    No document inference measurements yet.
+  </p>
+  <details>
+    <summary>Review history</summary>
+    <div id="review-history"></div>
+  </details>
+</dialog>
+<dialog id="restore-dialog" aria-label="Review restore">
+  <div class="dialog-heading">
+    <h2>Review restore</h2>
+    <button
+      data-close="restore-dialog"
+      class="icon-button"
+      aria-label="Close restore"
+    >
+      ×
+    </button>
+  </div>
+  <p id="restore-summary"></p>
+  <label
+    >Conflict handling<select id="restore-mode">
+      <option value="merge">Merge; keep current IDs and decisions</option>
+      <option value="replace">Replace current library</option>
+    </select></label
+  >
+  <p>
+    Imported documents and preferences start local-only. Replace can be undone
+    once; export your current library first for longer-term recovery.
+    Suggestions and in-flight authorizations are not restored.
+  </p>
+  <button id="confirm-restore">Restore reviewed backup</button>
+</dialog>
+<dialog id="memory-dialog" aria-label="What the app remembers">
+  <div class="dialog-heading">
+    <h2>What the app remembers</h2>
+    <button
+      data-close="memory-dialog"
+      class="icon-button"
+      aria-label="Close memory"
+    >
+      ×
+    </button>
+  </div>
+  <p class="note">
+    Only active, approved decisions may be retrieved. Private sources stay out
+    of cloud prompts. Disabling memory removes future influence; Undo restores
+    it explicitly.
+  </p>
+  <div id="memory-list"></div>
+  <hr />
+  <h3>A preference for future files</h3>
+  <p>
+    Choose an exact phrase and category. Preview affected files before
+    confirming. This is a user rule, not a trained classifier.
+  </p>
+  <form id="rule-form">
+    <label
+      >When the text contains<input
+        id="rule-phrase"
+        minlength="3"
+        maxlength="120"
+        required
+        placeholder="e.g. assigned reading" /></label
+    ><label>Prefer category<select id="rule-category" required></select></label
+    ><button id="preview-rule" type="submit">Preview preference</button>
+  </form>
+  <div id="rule-preview"></div>
+</dialog>
