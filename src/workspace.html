@@ -190,19 +190,23 @@
             <option value="grid">Grid</option>
             <option value="list">List</option>
           </select>
-          <button id="related-search" class="secondary">
-            Search related meaning locally
-          </button>
         </div>
       </details>
     </div>
     <div class="library-results">
       <strong id="results-count" role="status"></strong
       ><button id="topic-filter-chip" class="topic-chip active" hidden></button
+      ><button id="find-it" class="secondary" hidden>Find it for me</button
       ><button id="reset-filters" class="quiet-button" hidden>
         Clear search & filters
       </button>
     </div>
+    <section
+      id="find-results"
+      class="find-results"
+      aria-live="polite"
+      hidden
+    ></section>
     <p id="search-status" class="note" role="status">
       Search filenames and extracted text. Use quotes for an exact phrase.
       Unextracted content is not searchable.

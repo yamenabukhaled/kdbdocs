@@ -136,7 +136,7 @@ test("progressively saved manual imports undo as one batch and leave no searchab
   await expect(page.locator("#document-count")).toHaveText("0");
 });
 
-test("content phrases, combined filters and local related terms find opaque filenames; changed queries discard expansion", async ({
+test("content phrases and combined filters find opaque filenames", async ({
   page,
 }) => {
   await simulatedDevice(page);
@@ -184,25 +184,6 @@ test("content phrases, combined filters and local related terms find opaque file
   await page.locator("#type-filter").selectOption("all");
   if (await page.locator("body.home-view").count())
     await page.locator("#all-filter").click();
-  await page.locator("#document-search").fill("batteries hate winter");
-  await expect(page.locator("#search-status")).toContainText("0 matching");
-  if (await page.locator("body.home-view").count())
-    await page.locator("#all-filter").click();
-  await page.locator("#browse-filters").evaluate((node: HTMLDetailsElement) => {
-    node.open = true;
-  });
-  await page.locator("#related-search").click();
-  await expect(page.locator("#search-status")).toContainText(
-    "Related terms proposed on device",
-  );
-  await expect(page.locator(".document-row")).toHaveCount(1);
-  await expect(page.locator(".document-row")).toContainText("scan-482.txt");
-  if (await page.locator("body.home-view").count())
-    await page.locator("#all-filter").click();
-  await page.locator("#browse-filters").evaluate((node: HTMLDetailsElement) => {
-    node.open = true;
-  });
-  await page.locator("#related-search").click();
   if (await page.locator("body.home-view").count())
     await page.locator("#all-filter").click();
   await page.locator("#document-search").fill("office supplies");
